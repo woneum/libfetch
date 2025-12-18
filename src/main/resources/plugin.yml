@@ -1,0 +1,9 @@
+name: ${rootProject.name}
+main: io.github.zeqky.libfetch.plugin.LibFetchPlugin
+version: 1.0
+libraries:
+  - org.jetbrains.kotlin:kotlin-stdlib:2.2.20
+  - org.jetbrains.kotlin:kotlin-reflect:2.2.20
+commands:
+  fetch:
+    description: "Fetching Library"
