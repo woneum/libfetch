@@ -11,6 +11,9 @@ import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
+import kotlin.collections.component1
+import kotlin.collections.component2
+import kotlin.collections.component3
 
 class LibFetchPlugin : JavaPlugin() {
 
@@ -21,6 +24,10 @@ class LibFetchPlugin : JavaPlugin() {
         Bukkit.getLogger().info("[LibFetchPlugin] Plugin enabled!")
         saveDefaultConfig()
 
+        Bukkit.getScheduler().runTaskTimer(this, Updater(), 0L, 1L)
+    }
+
+    fun loadLibraries() {
         val libraries = config.getStringList("libraries")
         for (lib in libraries) {
             val parts = lib.split(":")
@@ -50,6 +57,8 @@ class LibFetchPlugin : JavaPlugin() {
             // 동적 클래스 로딩
             val classLoader = URLClassLoader(arrayOf(jarFile.toURI().toURL()), this.javaClass.classLoader)
         }
+
+        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "stop")
     }
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
@@ -137,5 +146,15 @@ class LibFetchPlugin : JavaPlugin() {
         val folder = File(serverLibs, "${group.replace('.', '/')}/$artifact/$version")
         if (!folder.exists()) folder.mkdirs()
         return File(folder, "$artifact-$version.jar")
+    }
+
+    inner class Updater: Runnable {
+        override fun run() {
+            if (config.getBoolean("update")) {
+                config.set("update", false)
+                saveConfig()
+                loadLibraries()
+            }
+        }
     }
 }
