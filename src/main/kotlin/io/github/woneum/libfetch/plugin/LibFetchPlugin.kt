@@ -1,11 +1,13 @@
-package io.github.zeqky.libfetch.plugin
+package io.github.woneum.libfetch.plugin
 
 import org.bukkit.Bukkit
 import org.bukkit.command.Command
 import org.bukkit.command.CommandSender
+import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
 import java.io.IOException
+import java.net.URI
 import java.net.URL
 import java.net.URLClassLoader
 import java.nio.file.Files
@@ -23,8 +25,9 @@ class LibFetchPlugin : JavaPlugin() {
     override fun onEnable() {
         Bukkit.getLogger().info("[LibFetchPlugin] Plugin enabled!")
         saveDefaultConfig()
+        loadLibraries()
 
-        Bukkit.getScheduler().runTaskTimer(this, Updater(), 0L, 1L)
+        Bukkit.getScheduler().runTaskTimer(this, Updater(File(dataFolder, "config.yml")), 0L, 1L)
     }
 
     fun loadLibraries() {
@@ -37,12 +40,13 @@ class LibFetchPlugin : JavaPlugin() {
             val version = parts[2]
 
             val jarFile = getLibraryFile(group, artifact, version)
+            val pomFile = getPomFile(group, artifact, version)
 
             if (!jarFile.exists()) {
                 try {
-                    if (downloadLibraryFromMavenLocal(group, artifact, version, jarFile)) {
+                    if (downloadLibraryFromMavenLocal(group, artifact, version, jarFile, pomFile)) {
                         Bukkit.getLogger().info("Loaded $artifact-$version from Maven Local")
-                    } else if (downloadLibraryFromJitPack(group, artifact, version, jarFile)) {
+                    } else if (downloadLibraryFromJitPack(group, artifact, version, jarFile, pomFile)) {
                         Bukkit.getLogger().info("Loaded $artifact-$version from JitPack")
                     } else {
                         Bukkit.getLogger().warning("Could not find $artifact-$version in Maven Local or JitPack!")
@@ -65,12 +69,13 @@ class LibFetchPlugin : JavaPlugin() {
         if (args.size != 3) return false
         val (group, artifact, version) = args
         val jarFile = getLibraryFile(group, artifact, version)
+        val pomFile = getPomFile(group, artifact, version)
 
         try {
             if (!jarFile.exists()) {
-                if (downloadLibraryFromMavenLocal(group, artifact, version, jarFile)) {
+                if (downloadLibraryFromMavenLocal(group, artifact, version, jarFile, pomFile)) {
                     sender.sendMessage("Loaded $artifact-$version from Maven Local")
-                } else if (downloadLibraryFromJitPack(group, artifact, version, jarFile)) {
+                } else if (downloadLibraryFromJitPack(group, artifact, version, jarFile, pomFile)) {
                     sender.sendMessage("Loaded $artifact-$version from JitPack")
                 } else {
                     sender.sendMessage("Could not find $artifact-$version in Maven Local or JitPack!")
@@ -90,18 +95,23 @@ class LibFetchPlugin : JavaPlugin() {
     }
 
     /** Maven Local (~/.m2/repository) */
-    private fun getWindowsM2Path(): File {
+    private fun getWindowsM2Path(): File? {
         return if (System.getProperty("os.name").lowercase().contains("linux")) {
             // WSL 환경이면 C 드라이브를 /mnt/c/... 로 변환
-            File("/mnt/c/Users/xenon/.m2/repository")
+            val userDir = File("/mnt/c/Users")
+            if (!userDir.exists() || !userDir.isDirectory) return null
+            userDir.listFiles()
+                .filter { it.isDirectory }
+                .map { File(it, ".m2/repository") }
+                .firstOrNull { it.exists() && it.isDirectory }
         } else {
             // Windows라면 그냥 C: 드라이브
-            File("C:\\Users\\xenon\\.m2\\repository")
+            File(System.getProperty("user.home"), ".m2\\repository")
         }
     }
 
     @Throws(IOException::class)
-    private fun downloadLibraryFromMavenLocal(group: String, artifact: String, version: String, output: File): Boolean {
+    private fun downloadLibraryFromMavenLocal(group: String, artifact: String, version: String, jarOutput: File, pomOutput: File): Boolean {
         val possibleRepos = listOf(
             // 1. Linux 홈 (~/.m2/repository)
             Paths.get(System.getProperty("user.home"), ".m2", "repository").toFile(),
@@ -110,12 +120,26 @@ class LibFetchPlugin : JavaPlugin() {
         )
 
         for (repo in possibleRepos) {
-            val localFile = Paths.get(repo.absolutePath, *group.split(".").toTypedArray(), artifact, version, "$artifact-$version.jar").toFile()
+            val path = repo?.absolutePath ?: continue
+            val basePath = Paths.get(
+                path,
+                *group.split(".").toTypedArray(),
+                artifact,
+                version
+            )
+            val localFile = basePath.resolve("$artifact-$version.jar").toFile()
+            val localPom = basePath.resolve("$artifact-$version.pom").toFile()
+
             println("Checking Maven Local path: ${localFile.absolutePath}")
 
             if (localFile.exists()) {
-                output.parentFile.mkdirs()
-                Files.copy(localFile.toPath(), output.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                jarOutput.parentFile.mkdirs()
+                Files.copy(localFile.toPath(), jarOutput.toPath(), StandardCopyOption.REPLACE_EXISTING)
+
+                if (localPom.exists()) {
+                    Files.copy(localPom.toPath(), pomOutput.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                }
+
                 println("Copied $artifact-$version.jar from Maven Local: ${localFile.absolutePath}")
                 return true
             } else {
@@ -128,17 +152,25 @@ class LibFetchPlugin : JavaPlugin() {
 
     /** JitPack */
     @Throws(IOException::class)
-    private fun downloadLibraryFromJitPack(group: String, artifact: String, version: String, output: File): Boolean {
-        val url = "https://jitpack.io/${group.replace('.', '/')}/$artifact/$version/$artifact-$version.jar"
-        return try {
-            output.parentFile.mkdirs()
-            URL(url).openStream().use { `in` ->
-                Files.copy(`in`, output.toPath(), StandardCopyOption.REPLACE_EXISTING)
+    private fun downloadLibraryFromJitPack(group: String, artifact: String, version: String, jarOutput: File, pomOutput: File): Boolean {
+        val baseUrl = "https://jitpack.io/${group.replace('.', '/')}/$artifact/$version"
+        try {
+            jarOutput.parentFile.mkdirs()
+
+            URI("$baseUrl/$artifact-$version.jar").toURL().openStream().use {
+                Files.copy(it, jarOutput.toPath(), StandardCopyOption.REPLACE_EXISTING)
             }
-            true
-        } catch (e: IOException) {
-            false
-        }
+
+            try {
+                URI("$baseUrl/$artifact-$version.pom").toURL().openStream().use {
+                    Files.copy(it, pomOutput.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                }
+            } catch (_: IOException) {}
+
+            return true
+        } catch (_: IOException) {}
+
+        return false
     }
 
     /** PaperMC server libraries 폴더 내 Maven 구조 경로 반환 */
@@ -148,11 +180,20 @@ class LibFetchPlugin : JavaPlugin() {
         return File(folder, "$artifact-$version.jar")
     }
 
-    inner class Updater: Runnable {
+    private fun getPomFile(group: String, artifact: String, version: String): File {
+        val folder = File(serverLibs, "${group.replace('.', '/')}/$artifact/$version")
+        if (!folder.exists()) folder.mkdirs()
+        return File(folder, "$artifact-$version.pom")
+    }
+
+    inner class Updater(private val file: File): Runnable {
+        private var lastModified: Long = file.lastModified()
+
         override fun run() {
-            if (config.getBoolean("update")) {
-                config.set("update", false)
-                saveConfig()
+            if (lastModified != file.lastModified()) {
+                val config = YamlConfiguration.loadConfiguration(file)
+                Bukkit.getLogger().info("Updating Libraries")
+                config.save(file)
                 loadLibraries()
             }
         }

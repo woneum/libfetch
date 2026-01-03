@@ -1,5 +1,5 @@
 name: ${rootProject.name}
-main: io.github.zeqky.libfetch.plugin.LibFetchPlugin
+main: io.github.woneum.libfetch.plugin.LibFetchPlugin
 version: 1.0
 libraries:
   - org.jetbrains.kotlin:kotlin-stdlib:2.2.20

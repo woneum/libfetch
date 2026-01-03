@@ -1,6 +1,7 @@
 libraries:
-  - io.github.zeqky:fount-api:2.0
-  - io.github.zeqky:fount-core:2.0
+  - io.github.monun:tap-api:5.0
+  - io.github.monun:tap-core:5.0
+  - io.github.monun:kommand:4.0
   - org.jetbrains.kotlin:kotlin-stdlib:2.2.20
   - org.jetbrains.kotlin:kotlin-reflect:2.2.20
 update: true
