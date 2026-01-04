@@ -4,4 +4,3 @@ libraries:
   - io.github.monun:kommand:4.0
   - org.jetbrains.kotlin:kotlin-stdlib:2.2.20
   - org.jetbrains.kotlin:kotlin-reflect:2.2.20
-update: true

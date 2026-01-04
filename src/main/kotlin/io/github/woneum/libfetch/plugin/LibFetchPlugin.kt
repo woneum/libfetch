@@ -25,13 +25,13 @@ class LibFetchPlugin : JavaPlugin() {
     override fun onEnable() {
         Bukkit.getLogger().info("[LibFetchPlugin] Plugin enabled!")
         saveDefaultConfig()
-        loadLibraries()
 
         Bukkit.getScheduler().runTaskTimer(this, Updater(File(dataFolder, "config.yml")), 0L, 1L)
     }
 
     fun loadLibraries() {
         val libraries = config.getStringList("libraries")
+        var reload = false
         for (lib in libraries) {
             val parts = lib.split(":")
             if (parts.size != 3) continue
@@ -43,6 +43,7 @@ class LibFetchPlugin : JavaPlugin() {
             val pomFile = getPomFile(group, artifact, version)
 
             if (!jarFile.exists()) {
+                reload = true
                 try {
                     if (downloadLibraryFromMavenLocal(group, artifact, version, jarFile, pomFile)) {
                         Bukkit.getLogger().info("Loaded $artifact-$version from Maven Local")
@@ -62,7 +63,7 @@ class LibFetchPlugin : JavaPlugin() {
             val classLoader = URLClassLoader(arrayOf(jarFile.toURI().toURL()), this.javaClass.classLoader)
         }
 
-        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "stop")
+        if (reload) Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "stop")
     }
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
