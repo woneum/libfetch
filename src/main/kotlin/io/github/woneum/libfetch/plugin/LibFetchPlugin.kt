@@ -26,6 +26,8 @@ class LibFetchPlugin : JavaPlugin() {
         Bukkit.getLogger().info("[LibFetchPlugin] Plugin enabled!")
         saveDefaultConfig()
 
+        loadLibraries()
+
         Bukkit.getScheduler().runTaskTimer(this, Updater(File(dataFolder, "config.yml")), 0L, 1L)
     }
 
